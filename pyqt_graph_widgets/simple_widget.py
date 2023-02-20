@@ -8,12 +8,16 @@ from PyQt5.QtGui import *
 
 import numpy as np
 
+from .input_controller import InputEventManager
+
 
 class GraphWidget(QWidget):
     def __init__(self, parent: QWidget = None, data: np.ndarray = None):
         super().__init__(parent)
         self.grabKeyboard()
         self.setMouseTracking(True)
+        
+        self.__input = InputEventManager(self)
         
         # Массив с данными
         self._source_data = data
@@ -262,6 +266,8 @@ class GraphWidget(QWidget):
     
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
+        
+        self.__input[key] = True
         
         if key == Qt.Key.Key_Control:
             self._ctrl_pressed = True
