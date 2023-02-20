@@ -8,7 +8,7 @@ from PyQt5.QtGui import *
 
 import numpy as np
 
-from .input_controller import InputEventManager
+from .input_controller import InputEventManager, MouseEvent, KeyEvent
 
 
 class GraphWidget(QWidget):
@@ -17,7 +17,11 @@ class GraphWidget(QWidget):
         self.grabKeyboard()
         self.setMouseTracking(True)
         
-        self.__input = InputEventManager(self)
+        self.iem = InputEventManager(self, [MouseEvent(Qt.MouseButton.LeftButton,
+                                                       slot=self._update_start_offset_click_pos),
+                                            MouseEvent(Qt.MouseButton.MiddleButton),
+                                            MouseEvent(Qt.RightButton,
+                                                       slot=self.reset_offsets)])
         
         # Массив с данными
         self._source_data = data
@@ -39,10 +43,10 @@ class GraphWidget(QWidget):
         self._show_axis_div_text = True
         
         # Для перемещения графика мышью
-        self._lmb_pressed = False
+        self._start_offset_click_pos = None
+        # Смещение центра осей, относительно центра виджета
         self._offset_x = 0
         self._offset_y = 0
-        self._start_offset_click_pos = None
         
         # Включает отрисовку точек
         self._is_show_points = False
@@ -51,8 +55,6 @@ class GraphWidget(QWidget):
         self._is_float_round = True
         # Кол-во знаков после запятой
         self._digits_after_comma = 3
-        # СКМ нажата?
-        self._mmb_pressed = False
     
     def _restore_painter_props(func):
         def wrapper(self, qp: QPainter, *args, **kwargs):
@@ -68,7 +70,7 @@ class GraphWidget(QWidget):
               
     @_restore_painter_props
     def _draw_cursor_pos_at_graph(self, qp: QPainter):
-        if not self._mmb_pressed:
+        if not self.iem[Qt.MouseButton.MiddleButton]:
             return
         ocx, ocy = self.get_offset_axis_center()
         pos = self.mapFromGlobal(self.cursor().pos())
@@ -103,8 +105,8 @@ class GraphWidget(QWidget):
         x = 5
         c_pos = self.mapFromGlobal(self.cursor().pos())
         values = (f'Scale: {self._scale_factor}',
-                  f'LMB Pressed: {self._lmb_pressed}',
-                  f'MMB Pressed: {self._mmb_pressed}',
+                  f'LMB Pressed: {self.iem[Qt.MouseButton.LeftButton]}',
+                  f'MMB Pressed: {self.iem[Qt.MouseButton.MiddleButton]}',
                   f'Show points (P): {self._is_show_points}',
                   f'Show axis div text (T): {self._show_axis_div_text}',
                   f'Off-center axis: {self.get_offset_axis_center()}',
@@ -211,7 +213,16 @@ class GraphWidget(QWidget):
     def _apply_scale_factor(self):
         # Применяем масштабирование к данным
         self._prepared_data = self._source_data * self._scale_factor
- 
+
+    def _move_offset_center_by_event(self, event: QMouseEvent):
+        pos = event.pos() - self._start_offset_click_pos
+        self._offset_x += pos.x()
+        self._offset_y += pos.y()
+        self._start_offset_click_pos = event.pos()
+        
+    def _update_start_offset_click_pos(self, pressed: bool, event: QMouseEvent):
+        self._start_offset_click_pos = event.pos() if pressed else None
+
     def wheelEvent(self, event: QWheelEvent) -> None:
         if event.angleDelta().y() > 0:
             self._scale_factor += self._scale_factor_step
@@ -226,48 +237,24 @@ class GraphWidget(QWidget):
         return super().wheelEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        btn = event.button()
-        if btn == Qt.MouseButton.LeftButton:
-            self._lmb_pressed = True
-            self._start_offset_click_pos = event.pos()
-        
-        elif btn == Qt.MouseButton.RightButton:
-            self._offset_x = self._offset_y = 0
-        
-        if btn == Qt.MouseButton.MiddleButton:
-            self._mmb_pressed = True
-        
+        self.iem.set_pressed_without_key_error(event.button(), True, event)
         self.update()
         return super().mousePressEvent(event)
     
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        btn = event.button()
-        if btn == Qt.MouseButton.LeftButton:
-            self._lmb_pressed = False
-            self._start_offset_click_pos = None
-        
-        if btn == Qt.MouseButton.MiddleButton:
-            self._mmb_pressed = False
-        
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:      
+        self.iem.set_pressed_without_key_error(event.button(), False, event)
         self.update()
         return super().mouseReleaseEvent(event)
     
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if self._lmb_pressed:
-            pos = event.pos() - self._start_offset_click_pos
-            
-            self._offset_x += pos.x()
-            self._offset_y += pos.y()
-            
-            self._start_offset_click_pos = event.pos()
+        if self.iem[Qt.MouseButton.LeftButton]:
+            self._move_offset_center_by_event(event)
             
         self.update()
         return super().mouseMoveEvent(event)
     
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
-        
-        self.__input[key] = True
         
         if key == Qt.Key.Key_Control:
             self._ctrl_pressed = True
@@ -341,3 +328,5 @@ class GraphWidget(QWidget):
         center = self.rect().center()
         return center.x(), center.y()
     
+    def reset_offsets(self):
+        self._offset_x = self._offset_y = 0
