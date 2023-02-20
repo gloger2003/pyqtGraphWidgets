@@ -20,7 +20,7 @@ class MouseEvent(QObject):
     def __init__(self, btn: Qt.MouseButton, desc: str = '', slot: Optional[Callable] = None):
         super().__init__()
         self.__pressed = False
-        self.__btn = btn
+        self.__code = btn
         self.__desc = desc
         if slot is not None:
             self.state_changed.connect(slot)
@@ -37,14 +37,14 @@ class MouseEvent(QObject):
         return self.__pressed
     
     def code(self) -> int:
-        return self.__btn
+        return self.__code
     
     def desc(self) -> str:
         btn = {
             Qt.MouseButton.LeftButton: 'LMB',
             Qt.MouseButton.RightButton: 'RMB',
             Qt.MouseButton.MiddleButton: 'MMB'
-        }.get(self.__btn, '?')
+        }.get(self.__code, '?')
         return f'{self.__desc} ({btn}):'
     
     def set_desc(self, desc: str):
